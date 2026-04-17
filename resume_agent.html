@@ -101,80 +101,138 @@ textarea::placeholder{color:var(--tx3)}
   <div class="footer">API key + backend URL saved in browser · PDF compiled server-side with pdflatex · Template: Jake's Resume (github.com/jakegut)</div>
 </div>
 <script>
-let PDF=null;
-window.addEventListener('load',()=>{try{const k=localStorage.getItem('rk');if(k){document.getElementById('apikey').value=k;checkKey();}const u=localStorage.getItem('bu');if(u)document.getElementById('backend').value=u;}catch(e){}});
-function save(){try{const u=document.getElementById('backend').value.trim();if(u)localStorage.setItem('bu',u);}catch(e){}}
-function checkKey(){const v=document.getElementById('apikey').value.trim();const el=document.getElementById('ks');if(!v){el.textContent='not set';el.className='ks';}else if(v.startsWith('sk-ant')){el.textContent='✓ saved';el.className='ks ok';try{localStorage.setItem('rk',v);}catch(e){}}else{el.textContent='✗ bad format';el.className='ks bad';}}
-function ss(id,state){const el=document.getElementById(id);if(!el)return;el.className='step '+state;const ic=el.querySelector('.si,.spin');if(!ic)return;if(state==='active')ic.outerHTML='<span class="spin"></span>';else if(state==='done')ic.outerHTML='<span class="si">✓</span>';else ic.outerHTML='<span class="si">○</span>';}
-function showErr(m){const e=document.getElementById('err');e.textContent=m;e.style.display='block';}
-const wait=ms=>new Promise(r=>setTimeout(r,ms));
-async function run(){
-  const backend=document.getElementById('backend').value.trim().replace(/\/$/,'');
-  const key=document.getElementById('apikey').value.trim();
-  const jd=document.getElementById('jd').value.trim();
-  if(!backend){showErr('Please enter your backend URL.');return;}
-  if(!key){showErr('Please enter your Anthropic API key.');return;}
-  if(!jd){showErr('Please paste a job description.');return;}
-  document.getElementById('err').style.display='none';
-  document.getElementById('res').style.display='none';
-  document.getElementById('prog').style.display='block';
-  document.getElementById('runbtn').disabled=true;
-  PDF=null;
-  ['s1','s2','s3','s4'].forEach(s=>ss(s,''));
-  ss('s1','active');
-  try{
-    // Wake up Render (free tier sleeps — first ping wakes it, second call works)
-    ss('s1','active');
-    try { await Promise.race([fetch(backend+'/health'), new Promise((_,r)=>setTimeout(()=>r(),8000))]); } catch(e){}
-    await wait(300);
-    ss('s1','done'); ss('s2','active');
-    // Main request with 2-minute timeout
-    const controller = new AbortController();
-    const timer = setTimeout(()=>controller.abort(), 120000);
-    const resp=await fetch(backend+'/tailor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jd,api_key:key}),signal:controller.signal});
-    clearTimeout(timer);
-    ss('s2','done');ss('s3','active');await wait(300);
-    if(!resp.ok){const e=await resp.json();throw new Error(e.error||'Server error '+resp.status);}
-    const data=await resp.json();
-    if(data.error)throw new Error(data.error);
-    ss('s2','done');ss('s3','active');await wait(200);
+let PDF = null;
 
-    // Step 2: Compile real Jake's LaTeX via free latex.ytotech.com API
-    const latexResp=await fetch('https://latex.ytotech.com/builds/sync',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({compiler:'pdflatex',resources:[{main:true,content:data.latex}]})
-    });
-    if(!latexResp.ok){
-      const errText=await latexResp.text();
-      throw new Error('LaTeX compilation failed: '+errText.slice(0,200));
-    }
-    const pdfBlob=await latexResp.blob();
-    PDF=pdfBlob;
-    ss('s3','done');ss('s4','active');await wait(200);ss('s4','done');
-    render(data);
-    document.getElementById('res').style.display='block';
-  }catch(e){document.getElementById('prog').style.display='none';showErr('Error: '+e.message);}
-  document.getElementById('runbtn').disabled=false;
+window.addEventListener('load', () => {
+  try {
+    const k = localStorage.getItem('rk'); if(k){document.getElementById('apikey').value=k; checkKey();}
+    const u = localStorage.getItem('bu'); if(u) document.getElementById('backend').value=u;
+  } catch(e) {}
+});
+
+function save(){ try{ const u=document.getElementById('backend').value.trim(); if(u) localStorage.setItem('bu',u); }catch(e){} }
+
+function checkKey(){
+  const v=document.getElementById('apikey').value.trim();
+  const el=document.getElementById('ks');
+  if(!v){ el.textContent='not set'; el.className='ks'; }
+  else if(v.startsWith('sk-ant')){ el.textContent='saved'; el.className='ks ok'; try{ localStorage.setItem('rk',v); }catch(e){} }
+  else{ el.textContent='bad format'; el.className='ks bad'; }
 }
+
+function ss(id, state){
+  const el=document.getElementById(id); if(!el) return;
+  el.className='step '+state;
+  const ic=el.querySelector('.si,.spin');
+  if(!ic) return;
+  if(state==='active') ic.outerHTML='<span class="spin"></span>';
+  else if(state==='done') ic.outerHTML='<span class="si">✓</span>';
+  else ic.outerHTML='<span class="si">○</span>';
+}
+
+function showErr(m){ const e=document.getElementById('err'); e.textContent=m; e.style.display='block'; }
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+async function run(){
+  const backend = document.getElementById('backend').value.trim().replace(/\/$/,'');
+  const key     = document.getElementById('apikey').value.trim();
+  const jd      = document.getElementById('jd').value.trim();
+  if(!backend){ showErr('Please enter your backend URL.'); return; }
+  if(!key){     showErr('Please enter your Anthropic API key.'); return; }
+  if(!jd){      showErr('Please paste a job description.'); return; }
+
+  document.getElementById('err').style.display = 'none';
+  document.getElementById('res').style.display = 'none';
+  document.getElementById('prog').style.display = 'block';
+  document.getElementById('runbtn').disabled = true;
+  PDF = null;
+  ['s1','s2','s3','s4'].forEach(s => ss(s,''));
+  ss('s1','active');
+
+  try {
+    // Wake up Render free tier (spins down after inactivity)
+    try { await Promise.race([fetch(backend+'/health'), new Promise((_,r) => setTimeout(()=>r(), 10000))]); } catch(e){}
+    await wait(400);
+    ss('s1','done'); ss('s2','active');
+
+    // Main request — 2 minute timeout
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 120000);
+    let resp;
+    try {
+      resp = await fetch(backend+'/tailor', {
+        method:  'POST',
+        headers: {'Content-Type':'application/json'},
+        body:    JSON.stringify({jd, api_key: key}),
+        signal:  ctrl.signal
+      });
+    } catch(fetchErr) {
+      throw new Error('Cannot reach backend. Check your Render URL and make sure the service is running. (' + fetchErr.message + ')');
+    } finally { clearTimeout(timer); }
+
+    ss('s2','done'); ss('s3','active'); await wait(300);
+
+    if(!resp.ok){
+      let errMsg = 'Server error '+resp.status;
+      try { const e=await resp.json(); errMsg = e.error || errMsg; } catch(e){}
+      throw new Error(errMsg);
+    }
+
+    const data = await resp.json();
+    if(data.error) throw new Error(data.error);
+    if(!data.pdf_b64) throw new Error('No PDF returned from server. Check Render logs.');
+
+    // Decode base64 PDF to Blob
+    const binary = atob(data.pdf_b64);
+    const bytes  = new Uint8Array(binary.length);
+    for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    PDF = new Blob([bytes], {type:'application/pdf'});
+
+    ss('s3','done'); ss('s4','active'); await wait(200); ss('s4','done');
+    render(data);
+    document.getElementById('res').style.display = 'block';
+
+  } catch(e) {
+    document.getElementById('prog').style.display = 'none';
+    showErr('Error: ' + e.message);
+  }
+  document.getElementById('runbtn').disabled = false;
+}
+
 function render(r){
-  const sc=r.score||0;const n=document.getElementById('snum');n.textContent=sc+'%';n.className='snum '+(sc>=80?'hi':sc>=65?'mid':'lo');
-  document.getElementById('srole').textContent=r.role||'—';document.getElementById('sfit').textContent=r.fit||'—';
-  const b=document.getElementById('sbadge');b.textContent=sc>=75?'ATS: Pass':'ATS: Review';b.className='sbadge '+(sc>=75?'bpass':'bborder');
-  const hEl=document.getElementById('kwh');hEl.innerHTML='';const mEl=document.getElementById('kwm');mEl.innerHTML='';
+  const sc=r.score||0;
+  const n=document.getElementById('snum'); n.textContent=sc+'%';
+  n.className='snum '+(sc>=80?'hi':sc>=65?'mid':'lo');
+  document.getElementById('srole').textContent = r.role||'—';
+  document.getElementById('sfit').textContent  = r.fit||'—';
+  const b=document.getElementById('sbadge');
+  b.textContent = sc>=75?'ATS: Pass':'ATS: Review';
+  b.className   = 'sbadge '+(sc>=75?'bpass':'bborder');
+  const hEl=document.getElementById('kwh'); hEl.innerHTML='';
+  const mEl=document.getElementById('kwm'); mEl.innerHTML='';
   (r.matched_keywords||[]).forEach(k=>{const s=document.createElement('span');s.className='kw hit';s.textContent=k;hEl.appendChild(s);});
   (r.missing_keywords||[]).forEach(k=>{const s=document.createElement('span');s.className='kw miss';s.textContent=k;mEl.appendChild(s);});
-  document.getElementById('tips').textContent=r.tips||'—';
+  document.getElementById('tips').textContent = r.tips||'—';
 }
+
 function dl(){
-  if(!PDF)return;
-  const btn=document.getElementById('dlbtn');btn.disabled=true;btn.textContent='Preparing...';
-  try{
-    const url=URL.createObjectURL(PDF);
-    const a=document.createElement('a');a.href=url;a.download='ShailaReddyKankanala_Resume.pdf';a.click();
-    setTimeout(()=>URL.revokeObjectURL(url),1000);
-  }catch(e){showErr('Download error: '+e.message);}
-  btn.disabled=false;btn.textContent="↓ Download Tailored Resume PDF (Jake's Template)";
+  if(!PDF){ showErr('No PDF available. Run the analysis first.'); return; }
+  const btn=document.getElementById('dlbtn');
+  btn.disabled=true; btn.textContent='Downloading...';
+  try {
+    const url = URL.createObjectURL(PDF);
+    const a   = document.createElement('a');
+    a.href     = url;
+    a.download = 'ShailaReddyKankanala_Resume.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch(e) {
+    showErr('Download failed: '+e.message);
+  }
+  btn.disabled=false;
+  btn.textContent = "↓ Download Tailored Resume PDF";
 }
 </script>
 </body>
