@@ -272,6 +272,17 @@ def add_cors(response):
 def tailor_options():
     return "", 200
 
+@app.after_request
+def add_cors(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return response
+
+@app.route("/tailor", methods=["OPTIONS"])
+def tailor_preflight():
+    return "", 204
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
