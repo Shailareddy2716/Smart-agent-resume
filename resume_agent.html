@@ -73,7 +73,7 @@ textarea::placeholder{color:var(--tx3)}
     <div class="ct">Working</div>
     <div class="step" id="s1"><span class="si">○</span>Sending to backend server</div>
     <div class="step" id="s2"><span class="si">○</span>Claude tailoring resume content</div>
-    <div class="step" id="s3"><span class="si">○</span>Compiling Jake's LaTeX template with pdflatex</div>
+    <div class="step" id="s3"><span class="si">○</span>Compiling Jake's LaTeX via free pdflatex API</div>
     <div class="step" id="s4"><span class="si">○</span>PDF ready — real LaTeX output</div>
   </div>
   <div class="res" id="res">
@@ -124,13 +124,26 @@ async function run(){
   ss('s1','active');
   try{
     await wait(200);
+    // Step 1: Get tailored content + LaTeX from backend
     const resp=await fetch(backend+'/tailor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jd,api_key:key})});
     ss('s1','done');ss('s2','active');await wait(300);
-    ss('s2','done');ss('s3','active');await wait(300);
     if(!resp.ok){const e=await resp.json();throw new Error(e.error||'Server error '+resp.status);}
     const data=await resp.json();
     if(data.error)throw new Error(data.error);
-    PDF=data.pdf_b64;
+    ss('s2','done');ss('s3','active');await wait(200);
+
+    // Step 2: Compile real Jake's LaTeX via free latex.ytotech.com API
+    const latexResp=await fetch('https://latex.ytotech.com/builds/sync',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({compiler:'pdflatex',resources:[{main:true,content:data.latex}]})
+    });
+    if(!latexResp.ok){
+      const errText=await latexResp.text();
+      throw new Error('LaTeX compilation failed: '+errText.slice(0,200));
+    }
+    const pdfBlob=await latexResp.blob();
+    PDF=pdfBlob;
     ss('s3','done');ss('s4','active');await wait(200);ss('s4','done');
     render(data);
     document.getElementById('res').style.display='block';
@@ -149,7 +162,11 @@ function render(r){
 function dl(){
   if(!PDF)return;
   const btn=document.getElementById('dlbtn');btn.disabled=true;btn.textContent='Preparing...';
-  try{const bin=atob(PDF),bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const a=document.createElement('a');a.href=url;a.download='ShailaReddyKankanala_Resume.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){showErr('Download error: '+e.message);}
+  try{
+    const url=URL.createObjectURL(PDF);
+    const a=document.createElement('a');a.href=url;a.download='ShailaReddyKankanala_Resume.pdf';a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(e){showErr('Download error: '+e.message);}
   btn.disabled=false;btn.textContent="↓ Download Tailored Resume PDF (Jake's Template)";
 }
 </script>
