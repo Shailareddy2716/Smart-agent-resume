@@ -3,3 +3,4 @@ flask-cors==4.0.1
 anthropic==0.49.0
 httpx==0.27.2
 gunicorn==22.0.0
+reportlab==4.2.2
