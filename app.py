@@ -283,6 +283,10 @@ def add_cors(response):
 def tailor_preflight():
     return "", 204
 
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify({"status": "ok", "service": "Resume Agent Backend", "version": "2.0"})
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
