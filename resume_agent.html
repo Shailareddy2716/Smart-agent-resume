@@ -123,10 +123,17 @@ async function run(){
   ['s1','s2','s3','s4'].forEach(s=>ss(s,''));
   ss('s1','active');
   try{
-    await wait(200);
-    // Step 1: Get tailored content + LaTeX from backend
-    const resp=await fetch(backend+'/tailor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jd,api_key:key})});
-    ss('s1','done');ss('s2','active');await wait(300);
+    // Wake up Render (free tier sleeps — first ping wakes it, second call works)
+    ss('s1','active');
+    try { await Promise.race([fetch(backend+'/health'), new Promise((_,r)=>setTimeout(()=>r(),8000))]); } catch(e){}
+    await wait(300);
+    ss('s1','done'); ss('s2','active');
+    // Main request with 2-minute timeout
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort(), 120000);
+    const resp=await fetch(backend+'/tailor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jd,api_key:key}),signal:controller.signal});
+    clearTimeout(timer);
+    ss('s2','done');ss('s3','active');await wait(300);
     if(!resp.ok){const e=await resp.json();throw new Error(e.error||'Server error '+resp.status);}
     const data=await resp.json();
     if(data.error)throw new Error(data.error);
