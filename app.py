@@ -4,7 +4,7 @@ from flask_cors import CORS
 import anthropic
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*", "allow_headers": ["Content-Type"], "methods": ["GET","POST","OPTIONS"]}})
 
 # ── Full candidate profile ─────────────────────────────────────────────
 PROFILE = """
@@ -260,6 +260,17 @@ JOB DESCRIPTION:
 Return ONLY raw JSON, no markdown fences, no explanation:
 {{"score":85,"role":"Role Title","fit":"One sentence fit assessment","matched_keywords":["k1","k2"],"missing_keywords":["k1"],"tips":"1. tip\\n2. tip\\n3. tip","experience":[{{"company":"AllyIn.AI","title":"AI Engineer Intern","dates":"May 2025 -- Aug. 2025","location":"San Jose, CA","bullets":["b1","b2","b3","b4","b5"]}},{{"company":"Dextara Datamatics","title":"Data Engineer","dates":"Aug. 2022 -- Jul. 2024","location":"Hyderabad, India","bullets":["b1","b2","b3","b4","b5","b6","b7"]}},{{"company":"RineX.AI","title":"Data Analyst Intern","dates":"Sept. 2021 -- Jul. 2022","location":"Hyderabad, India","bullets":["b1","b2","b3","b4","b5"]}}],"projects":[{{"title":"...","stack":"...","date":"2025","bullets":["b1","b2"]}},{{"title":"...","stack":"...","date":"2025","bullets":["b1","b2"]}}],"skills":[{{"category":"Languages & Databases","items":"..."}},{{"category":"AI & ML Frameworks","items":"..."}},{{"category":"Data Engineering","items":"..."}},{{"category":"Cloud & Infrastructure","items":"..."}},{{"category":"Visualization","items":"..."}}]}}"""
 
+
+@app.after_request
+def add_cors(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return response
+
+@app.route("/tailor", methods=["OPTIONS"])
+def tailor_options():
+    return "", 200
 
 @app.route("/health", methods=["GET"])
 def health():
