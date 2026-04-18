@@ -1,13 +1,13 @@
-import os, json, base64
+import os
+import json
+import base64
 from io import BytesIO
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import anthropic
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 
 app = Flask(__name__)
-CORS(app, origins="*", allow_headers=["Content-Type"], methods=["GET","POST","OPTIONS"])
+CORS(app, origins="*", allow_headers=["Content-Type"], methods=["GET", "POST", "OPTIONS"])
 
 @app.after_request
 def add_cors(r):
@@ -20,7 +20,10 @@ def add_cors(r):
 def preflight():
     return "", 204
 
-# ── Candidate profile ─────────────────────────────────────────────────
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"})
+
 PROFILE = """
 CANDIDATE: Shaila Reddy Kankanala
 Contact: 925-819-3509 | shailareddy1603@gmail.com | linkedin.com/in/shailareddy | San Jose, CA
@@ -74,7 +77,7 @@ Visualization: Tableau, Power BI, Apache Superset, Streamlit
 AI & ML: PyTorch, Scikit-learn, LLM Fine-Tuning, RAG Pipelines, FAISS, Pinecone, SentenceTransformers, Vector Databases
 """
 
-# ── AI prompt ─────────────────────────────────────────────────────────
+
 def make_prompt(jd):
     return f"""You are an expert ATS resume writer. Tailor Shaila's resume for this job description.
 
@@ -83,10 +86,10 @@ RULES:
 - Dextara Datamatics: exactly 7 bullets
 - RineX.AI: exactly 5 bullets
 - Exactly 2 most relevant projects, 2 bullets each
-- Keep all dates/companies/titles exactly as in profile
-- Each bullet max 20 words — must fit in 1 printed line. No semicolons splitting long thoughts.
-- Mirror JD keywords naturally. Never invent facts. No pronouns.
-- Skills: only JD-relevant, each category short enough for one line.
+- All dates/companies/titles exactly as in profile
+- Each bullet max 20 words. No semicolons splitting long thoughts.
+- Mirror JD keywords. Never invent facts. No pronouns.
+- Skills: only JD-relevant, each category short.
 
 PROFILE:
 {PROFILE}
@@ -94,40 +97,44 @@ PROFILE:
 JOB DESCRIPTION:
 {jd}
 
-Return ONLY raw JSON, no markdown, no backticks:
-{{"score":85,"role":"Title","fit":"One sentence.","matched_keywords":["k1","k2"],"missing_keywords":["k1"],"tips":"1. tip\\n2. tip\\n3. tip","experience":[{{"company":"AllyIn.AI","title":"AI Engineer Intern","dates":"May 2025 - Aug. 2025","location":"San Jose, CA","bullets":["b1","b2","b3","b4","b5"]}},{{"company":"Dextara Datamatics","title":"Data Engineer","dates":"Aug. 2022 - Jul. 2024","location":"Hyderabad, India","bullets":["b1","b2","b3","b4","b5","b6","b7"]}},{{"company":"RineX.AI","title":"Data Analyst Intern","dates":"Sept. 2021 - Jul. 2022","location":"Hyderabad, India","bullets":["b1","b2","b3","b4","b5"]}}],"projects":[{{"title":"...","stack":"...","date":"2025","bullets":["b1","b2"]}},{{"title":"...","stack":"...","date":"2025","bullets":["b1","b2"]}}],"skills":[{{"category":"Languages & Databases","items":"..."}},{{"category":"AI & ML Frameworks","items":"..."}},{{"category":"Data Engineering","items":"..."}},{{"category":"Cloud & Infrastructure","items":"..."}},{{"category":"Visualization","items":"..."}}]}}"""
+Return ONLY raw JSON, no markdown:
+{{"score":85,"role":"Title","fit":"One sentence.","matched_keywords":["k1"],"missing_keywords":["k1"],"tips":"1. tip\\n2. tip\\n3. tip","experience":[{{"company":"AllyIn.AI","title":"AI Engineer Intern","dates":"May 2025 - Aug. 2025","location":"San Jose, CA","bullets":["b1","b2","b3","b4","b5"]}},{{"company":"Dextara Datamatics","title":"Data Engineer","dates":"Aug. 2022 - Jul. 2024","location":"Hyderabad, India","bullets":["b1","b2","b3","b4","b5","b6","b7"]}},{{"company":"RineX.AI","title":"Data Analyst Intern","dates":"Sept. 2021 - Jul. 2022","location":"Hyderabad, India","bullets":["b1","b2","b3","b4","b5"]}}],"projects":[{{"title":"...","stack":"...","date":"2025","bullets":["b1","b2"]}},{{"title":"...","stack":"...","date":"2025","bullets":["b1","b2"]}}],"skills":[{{"category":"Languages & Databases","items":"..."}},{{"category":"AI & ML Frameworks","items":"..."}},{{"category":"Data Engineering","items":"..."}},{{"category":"Cloud & Infrastructure","items":"..."}},{{"category":"Visualization","items":"..."}}]}}"""
 
-
-# ── PDF builder ───────────────────────────────────────────────────────
-PW, PH = letter
-LM = RM = 43.2
-TW = PW - LM - RM
-
-def wrap_text(c, text, font, size, max_w):
-    words = text.split()
-    lines, cur = [], ""
-    for w in words:
-        t = (cur + " " + w).strip()
-        if c.stringWidth(t, font, size) <= max_w:
-            cur = t
-        else:
-            if cur: lines.append(cur)
-            cur = w
-    if cur: lines.append(cur)
-    return lines or [""]
-
-def clamp2(c, text, font, size, max_w):
-    lines = wrap_text(c, text, font, size, max_w)
-    if len(lines) <= 2:
-        return lines
-    result = lines[:2]
-    last = result[1]
-    while last and c.stringWidth(last + "...", font, size) > max_w:
-        last = last.rsplit(" ", 1)[0]
-    result[1] = last + "..."
-    return result
 
 def build_pdf(data):
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+
+    PW, PH = letter
+    LM = RM = 43.2
+    TW = PW - LM - RM
+
+    def wrap_text(c, text, font, size, max_w):
+        words = text.split()
+        lines, cur = [], ""
+        for w in words:
+            t = (cur + " " + w).strip()
+            if c.stringWidth(t, font, size) <= max_w:
+                cur = t
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        return lines or [""]
+
+    def clamp2(c, text, font, size, max_w):
+        lines = wrap_text(c, text, font, size, max_w)
+        if len(lines) <= 2:
+            return lines
+        result = lines[:2]
+        last = result[1]
+        while last and c.stringWidth(last + "...", font, size) > max_w:
+            last = last.rsplit(" ", 1)[0]
+        result[1] = last + "..."
+        return result
+
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=letter)
     y = PH - 26
@@ -141,7 +148,6 @@ def build_pdf(data):
     def rule():
         nonlocal y
         c.setLineWidth(0.4)
-        c.setStrokeColorRGB(0, 0, 0)
         c.line(LM, y, PW - RM, y)
         y -= 5
 
@@ -156,7 +162,7 @@ def build_pdf(data):
         sp(3)
         rule()
 
-    def bullets(items):
+    def bullet_block(items):
         nonlocal y
         c.setFont("Helvetica", 9)
         for b in items:
@@ -211,7 +217,7 @@ def build_pdf(data):
         c.drawString(LM + 10, y, exp["title"])
         rstr(exp["location"], y, "Helvetica-Oblique")
         sp(10)
-        bullets(exp.get("bullets", []))
+        bullet_block(exp.get("bullets", []))
         sp(3)
 
     # Projects
@@ -229,7 +235,7 @@ def build_pdf(data):
         c.drawString(LM + pw2, y, stk)
         rstr(proj["date"], y)
         sp(10)
-        bullets(proj.get("bullets", []))
+        bullet_block(proj.get("bullets", []))
         sp(3)
 
     # Skills
@@ -251,103 +257,45 @@ def build_pdf(data):
     return buf.read()
 
 
-# ── Routes ────────────────────────────────────────────────────────────
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok", "version": "3.0", "build_pdf": "present"})
-
-@app.route("/test-pdf", methods=["GET"])
-def test_pdf():
-    """Test endpoint - generates a sample PDF to verify the full pipeline works."""
-    try:
-        sample = {
-            "experience": [
-                {"company": "AllyIn.AI", "title": "AI Engineer Intern",
-                 "dates": "May 2025 - Aug. 2025", "location": "San Jose, CA",
-                 "bullets": ["Built RAG pipelines with FAISS achieving 35% drop in LLM hallucinations.",
-                             "Fine-tuned LLaMA models raising accuracy from 72% to 90%.",
-                             "Shipped evaluation tooling lifting benchmark quality 22% in 4 weeks.",
-                             "Consolidated 4 sources into Pinecone vector store via Docker.",
-                             "Prototyped event pipeline cutting iteration cycles 40%."]},
-                {"company": "Dextara Datamatics", "title": "Data Engineer",
-                 "dates": "Aug. 2022 - Jul. 2024", "location": "Hyderabad, India",
-                 "bullets": ["Engineered ETL pipelines on Snowflake processing 100K+ transactions.",
-                             "Deployed Kafka pipelines shrinking SLA from 4 hrs to 30 min.",
-                             "Managed Airflow via GCP saving 8 hrs/week across 20+ DAGs.",
-                             "Authored dbt models improving debugging time 35%.",
-                             "Migrated 500K+ records via REST APIs with 98% data consistency.",
-                             "Built Tableau dashboards unblocking 3 delayed deliverables.",
-                             "Designed data quality frameworks reducing reporting errors 30%."]},
-                {"company": "RineX.AI", "title": "Data Analyst Intern",
-                 "dates": "Sept. 2021 - Jul. 2022", "location": "Hyderabad, India",
-                 "bullets": ["Queried 1M+ datasets saving 12 hrs/week cutting turnaround to same-day.",
-                             "Built cleansing scripts cutting report errors 45% across 6 tables.",
-                             "Built dashboards co-leading churn analysis with 15% retention uplift.",
-                             "Developed playbooks onboarding 3 analysts cutting ramp-up to 10 days.",
-                             "Defined KPI frameworks adopted as dashboards by 3 business units."]}
-            ],
-            "projects": [
-                {"title": "Retail Demand Forecasting: ELT Pipeline",
-                 "stack": "PySpark, Airflow, Snowflake, dbt, GCP, Docker, Superset", "date": "2025",
-                 "bullets": ["Built ELT pipeline with 5 Airflow DAGs cutting forecast time 50%.",
-                             "Modeled demand indices across 20+ categories cutting report prep to 30 min."]},
-                {"title": "Plate Planner: RAG Pipeline",
-                 "stack": "FastAPI, FAISS, Pinecone, Neo4j, SentenceTransformers, Docker", "date": "2025",
-                 "bullets": ["Built FAISS pipeline for 223K+ recipes enabling AI recommendations under 100ms.",
-                             "Designed Neo4j graph engine achieving 70% Hit@5 and 20% quality gain."]}
-            ],
-            "skills": [
-                {"category": "Languages & Databases", "items": "Python, SQL, MySQL, Neo4j, REST APIs"},
-                {"category": "AI & ML Frameworks", "items": "PyTorch, Scikit-learn, FAISS, Pinecone, LLM Fine-Tuning"},
-                {"category": "Data Engineering", "items": "ETL/ELT, PySpark, Kafka, Airflow, dbt, Snowflake"},
-                {"category": "Cloud & Infrastructure", "items": "GCP, Docker, FastAPI, Git, Linux"},
-                {"category": "Visualization", "items": "Tableau, Power BI, Apache Superset, Streamlit"}
-            ]
-        }
-        pdf_bytes = build_pdf(sample)
-        pdf_b64   = base64.b64encode(pdf_bytes).decode("utf-8")
-        return jsonify({"status": "ok", "pdf_b64": pdf_b64, "size_bytes": len(pdf_bytes)})
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
-
-
 @app.route("/tailor", methods=["POST"])
 def tailor():
     try:
-        body    = request.get_json(force=True)
-        jd      = body.get("jd", "").strip()
+        import anthropic
+
+        body = request.get_json(force=True)
+        jd = body.get("jd", "").strip()
         api_key = body.get("api_key", "").strip()
 
-        if not jd:      return jsonify({"error": "No job description provided"}), 400
-        if not api_key: return jsonify({"error": "No API key provided"}), 400
+        if not jd:
+            return jsonify({"error": "No job description provided"}), 400
+        if not api_key:
+            return jsonify({"error": "No API key provided"}), 400
 
-        # Call Claude
-        client  = anthropic.Anthropic(api_key=api_key)
+        client = anthropic.Anthropic(api_key=api_key)
         message = client.messages.create(
             model="claude-sonnet-4-5",
             max_tokens=4000,
             messages=[{"role": "user", "content": make_prompt(jd)}]
         )
 
-        raw   = message.content[0].text
+        raw = message.content[0].text
         clean = raw.replace("```json", "").replace("```", "").strip()
-        s, e  = clean.find("{"), clean.rfind("}")
+        s, e = clean.find("{"), clean.rfind("}")
         if s != -1 and e != -1:
-            clean = clean[s:e+1]
+            clean = clean[s:e + 1]
         data = json.loads(clean)
 
-        # Build PDF
         pdf_bytes = build_pdf(data)
-        pdf_b64   = base64.b64encode(pdf_bytes).decode("utf-8")
+        pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
 
         return jsonify({
-            "score":            data.get("score", 0),
-            "role":             data.get("role", ""),
-            "fit":              data.get("fit", ""),
+            "score": data.get("score", 0),
+            "role": data.get("role", ""),
+            "fit": data.get("fit", ""),
             "matched_keywords": data.get("matched_keywords", []),
             "missing_keywords": data.get("missing_keywords", []),
-            "tips":             data.get("tips", ""),
-            "pdf_b64":          pdf_b64
+            "tips": data.get("tips", ""),
+            "pdf_b64": pdf_b64
         })
 
     except json.JSONDecodeError as e:
@@ -357,4 +305,4 @@ def tailor():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
