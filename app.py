@@ -3,7 +3,6 @@ from io import BytesIO
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import anthropic
-import base64
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
@@ -255,7 +254,61 @@ def build_pdf(data):
 # ── Routes ────────────────────────────────────────────────────────────
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "version": "3.0", "build_pdf": "present"})
+
+@app.route("/test-pdf", methods=["GET"])
+def test_pdf():
+    """Test endpoint - generates a sample PDF to verify the full pipeline works."""
+    try:
+        sample = {
+            "experience": [
+                {"company": "AllyIn.AI", "title": "AI Engineer Intern",
+                 "dates": "May 2025 - Aug. 2025", "location": "San Jose, CA",
+                 "bullets": ["Built RAG pipelines with FAISS achieving 35% drop in LLM hallucinations.",
+                             "Fine-tuned LLaMA models raising accuracy from 72% to 90%.",
+                             "Shipped evaluation tooling lifting benchmark quality 22% in 4 weeks.",
+                             "Consolidated 4 sources into Pinecone vector store via Docker.",
+                             "Prototyped event pipeline cutting iteration cycles 40%."]},
+                {"company": "Dextara Datamatics", "title": "Data Engineer",
+                 "dates": "Aug. 2022 - Jul. 2024", "location": "Hyderabad, India",
+                 "bullets": ["Engineered ETL pipelines on Snowflake processing 100K+ transactions.",
+                             "Deployed Kafka pipelines shrinking SLA from 4 hrs to 30 min.",
+                             "Managed Airflow via GCP saving 8 hrs/week across 20+ DAGs.",
+                             "Authored dbt models improving debugging time 35%.",
+                             "Migrated 500K+ records via REST APIs with 98% data consistency.",
+                             "Built Tableau dashboards unblocking 3 delayed deliverables.",
+                             "Designed data quality frameworks reducing reporting errors 30%."]},
+                {"company": "RineX.AI", "title": "Data Analyst Intern",
+                 "dates": "Sept. 2021 - Jul. 2022", "location": "Hyderabad, India",
+                 "bullets": ["Queried 1M+ datasets saving 12 hrs/week cutting turnaround to same-day.",
+                             "Built cleansing scripts cutting report errors 45% across 6 tables.",
+                             "Built dashboards co-leading churn analysis with 15% retention uplift.",
+                             "Developed playbooks onboarding 3 analysts cutting ramp-up to 10 days.",
+                             "Defined KPI frameworks adopted as dashboards by 3 business units."]}
+            ],
+            "projects": [
+                {"title": "Retail Demand Forecasting: ELT Pipeline",
+                 "stack": "PySpark, Airflow, Snowflake, dbt, GCP, Docker, Superset", "date": "2025",
+                 "bullets": ["Built ELT pipeline with 5 Airflow DAGs cutting forecast time 50%.",
+                             "Modeled demand indices across 20+ categories cutting report prep to 30 min."]},
+                {"title": "Plate Planner: RAG Pipeline",
+                 "stack": "FastAPI, FAISS, Pinecone, Neo4j, SentenceTransformers, Docker", "date": "2025",
+                 "bullets": ["Built FAISS pipeline for 223K+ recipes enabling AI recommendations under 100ms.",
+                             "Designed Neo4j graph engine achieving 70% Hit@5 and 20% quality gain."]}
+            ],
+            "skills": [
+                {"category": "Languages & Databases", "items": "Python, SQL, MySQL, Neo4j, REST APIs"},
+                {"category": "AI & ML Frameworks", "items": "PyTorch, Scikit-learn, FAISS, Pinecone, LLM Fine-Tuning"},
+                {"category": "Data Engineering", "items": "ETL/ELT, PySpark, Kafka, Airflow, dbt, Snowflake"},
+                {"category": "Cloud & Infrastructure", "items": "GCP, Docker, FastAPI, Git, Linux"},
+                {"category": "Visualization", "items": "Tableau, Power BI, Apache Superset, Streamlit"}
+            ]
+        }
+        pdf_bytes = build_pdf(sample)
+        pdf_b64   = base64.b64encode(pdf_bytes).decode("utf-8")
+        return jsonify({"status": "ok", "pdf_b64": pdf_b64, "size_bytes": len(pdf_bytes)})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 
 @app.route("/tailor", methods=["POST"])
